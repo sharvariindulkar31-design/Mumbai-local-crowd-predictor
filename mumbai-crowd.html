@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mumbai Local Crowd Predictor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#eef1f4;--surface:#fff;--ink:#17202b;--muted:#5d6a7a;--line:#d4dae2;--accent:#0b6e75;--accent-ink:#fff;
+--l1:#2e9e63;--l2:#d9a21b;--l3:#e07a1f;--l4:#c9362b;--none:#9aa5b1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161d;--surface:#1a232d;--ink:#e8eef5;--muted:#9aa8b8;--line:#2d3945;--accent:#4fc3cc;--accent-ink:#06282b;--l1:#4cc283;--l2:#e8b93c;--l3:#f0954a;--l4:#ee6a5e}}
+:root[data-theme="dark"]{--bg:#10161d;--surface:#1a232d;--ink:#e8eef5;--muted:#9aa8b8;--line:#2d3945;--accent:#4fc3cc;--accent-ink:#06282b;--l1:#4cc283;--l2:#e8b93c;--l3:#f0954a;--l4:#ee6a5e}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Archivo,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+main{max-width:900px;margin:0 auto;padding:32px 20px 56px}
+h1{font-size:clamp(28px,5vw,44px);font-weight:800;letter-spacing:-.02em;margin:0 0 6px;line-height:1.1}
+.sub{color:var(--muted);margin:0 0 24px;max-width:60ch}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:20px}
+label{display:block;font-weight:600;font-size:14px;margin-bottom:5px}
+select,input{width:100%;font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+select:focus,input:focus,.bar:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.result{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:20px}
+.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.level{font-size:clamp(30px,6vw,48px);font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.detail{color:var(--muted);font-size:15px}
+.meter{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin:16px 0 12px}
+#fill{height:100%;width:0;border-radius:6px}
+@media(prefers-reduced-motion:no-preference){#fill{transition:width .4s ease,background .4s ease}}
+.tip{margin:0;font-size:15px}
+.chartbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+h2{font-size:16px;margin:0 0 4px}
+.chart{display:flex;align-items:flex-end;gap:2px;height:150px;margin-top:14px;overflow-x:auto;padding-bottom:2px}
+.bar{flex:1 0 12px;min-width:12px;border:0;padding:0;border-radius:3px 3px 0 0;cursor:pointer;opacity:.85}
+.bar.sel{outline:2px solid var(--ink);outline-offset:1px;opacity:1}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:6px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.note{color:var(--muted);font-size:13px;margin-top:18px}
+</style>
+</head>
+<body>
+<main>
+<h1>Mumbai local crowd predictor</h1>
+<p class="sub">Pick a station, direction, and time. See how crowded the train is likely to be, and when a lighter one runs.</p>
+
+<div class="form">
+<div><label for="line">Line</label><select id="line"></select></div>
+<div><label for="stn">Station</label><select id="stn"></select></div>
+<div><label for="dir">Direction</label><select id="dir"></select></div>
+<div><label for="day">Day</label><select id="day"><option value="1">Weekday</option><option value="0.75">Saturday</option><option value="0.5">Sunday or holiday</option></select></div>
+<div><label for="time">Time</label><input type="time" id="time" value="09:00"></div>
+</div>
+
+<section class="result" aria-live="polite">
+<div class="top"><span class="level" id="level"></span><span class="detail" id="dens"></span></div>
+<div class="meter"><div id="fill"></div></div>
+<p class="tip" id="tip"></p>
+</section>
+
+<section class="chartbox">
+<h2>Crowd through the day</h2>
+<div class="detail">Tap a bar to check that time.</div>
+<div class="chart" id="chart"></div>
+<div class="axis"><span>5:00</span><span>9:00</span><span>13:00</span><span>17:00</span><span>21:00</span><span>23:30</span></div>
+<div class="legend"><span><i style="background:var(--l1)"></i>Light</span><span><i style="background:var(--l2)"></i>Moderate</span><span><i style="background:var(--l3)"></i>Crowded</span><span><i style="background:var(--l4)"></i>Super dense</span></div>
+</section>
+
+<p class="note">Prototype. Estimates come from a rule-based model (rush-hour curves, station position, day type), not real railway data. Next step: train a model on real ridership counts.</p>
+</main>
+<script>
+// f = position along line (1 at city end, 0 at far end). bonus = interchange load. end = "city" or "far" terminal.
+var LINES={
+"Western":{city:"Churchgate",far:"Virar",stations:[["Churchgate",1,0,"city"],["Dadar",.85,.12],["Bandra",.75,.05],["Andheri",.63,.08],["Borivali",.48,0],["Vasai Road",.23,0],["Virar",0,0,"far"]]},
+"Central":{city:"CSMT",far:"Kalyan",stations:[["CSMT",1,0,"city"],["Dadar",.83,.12],["Kurla",.7,.08],["Ghatkopar",.65,.03],["Thane",.37,.06],["Dombivli",.11,0],["Kalyan",0,0,"far"]]},
+"Harbour":{city:"CSMT",far:"Panvel",stations:[["CSMT",1,0,"city"],["Wadala Road",.79,.02],["Chembur",.69,0],["Mankhurd",.54,0],["Vashi",.38,.04],["Belapur CBD",.21,0],["Panvel",0,0,"far"]]}
+};
+var LV=[["Light","Seats likely available","var(--l1)"],["Moderate","Standing room, easy to board","var(--l2)"],["Crowded","Hard to move inside","var(--l3)"],["Super dense","You may miss the first train","var(--l4)"]];
+var $=function(id){return document.getElementById(id)};
+function g(x,m,s){return Math.exp(-.5*Math.pow((x-m)/s,2))}
+function lvl(c){return c<.25?0:c<.5?1:c<.75?2:3}
+function hhmm(m){m=((m%1440)+1440)%1440;var h=Math.floor(m/60),n=m%60;return h+":"+(n<10?"0":"")+n}
+function cur(){var L=LINES[$("line").value];return L.stations[+$("stn").value]}
+// Returns crowd 0..1, or -1 when no trains run.
+function crowd(mins){
+  var L=LINES[$("line").value],s=cur(),dir=$("dir").value,dm=+$("day").value;
+  var h=mins/60; if(h<4)h+=24;
+  if(h>=25&&h<28)return -1;
+  var mor=g(h,9.25,1.15),eve=g(h,18.9,1.4),mid=g(h,13.5,3.5);
+  var p=dir==="city"?.08+.3*mid+mor+.5*eve:.08+.3*mid+.5*mor+eve;
+  p=.08+(p-.08)*dm;
+  if(h>22)p*=Math.max(.25,1-.5*(h-22)/3);
+  if(h<5.5)p*=.5;
+  var load=Math.min(1,.5+.5*Math.pow(s[1],.6)+s[2]);
+  return Math.max(0,Math.min(1,p))*load+.03;
+}
+function fillSelect(el,items,keep){
+  el.textContent="";
+  items.forEach(function(it){var o=document.createElement("option");o.value=it[0];o.textContent=it[1];el.appendChild(o)});
+}
+function setStations(){
+  var L=LINES[$("line").value];
+  fillSelect($("stn"),L.stations.map(function(s,i){return[i,s[0]]}));
+  $("stn").value=1;setDirs();
+}
+function setDirs(){
+  var L=LINES[$("line").value],s=cur(),opts=[];
+  if(s[3]!=="city")opts.push(["city","Towards "+L.city]);
+  if(s[3]!=="far")opts.push(["far","Towards "+L.far]);
+  var prev=$("dir").value;
+  fillSelect($("dir"),opts);
+  if(opts.some(function(o){return o[0]===prev}))$("dir").value=prev;
+  update();
+}
+function mins(){var v=$("time").value||"09:00";return +v.slice(0,2)*60+ +v.slice(3,5)}
+function update(){
+  var m=mins(),c=crowd(m);
+  if(c<0){
+    $("level").textContent="No service";$("dens").textContent="";
+    $("fill").style.width="0";$("tip").textContent="Local trains pause roughly 1:00 to 4:00. Pick a time after 4:00.";
+  }else{
+    var l=LV[lvl(c)];
+    $("level").textContent=l[0];$("level").style.color=l[2];
+    $("dens").textContent=l[1]+". About "+Math.round(2+13*c)+" standing per square metre.";
+    $("fill").style.width=Math.round(c*100)+"%";$("fill").style.background=l[2];
+    // find a lighter slot within 2 hours
+    var best=m,bc=c;
+    for(var d=-120;d<=120;d+=30){var cc=crowd(m+d);if(cc>=0&&cc<bc-.001){bc=cc;best=m+d}}
+    $("tip").textContent=bc<c-.08?"Travel at "+hhmm(best)+" for a lighter train ("+LV[lvl(bc)][0].toLowerCase()+").":"This is already one of the lighter slots within two hours.";
+  }
+  draw(m);
+}
+function draw(m){
+  var ch=$("chart");ch.textContent="";
+  var sel=Math.round(m/30)*30;
+  for(var t=300;t<=1410;t+=30){
+    var c=crowd(t),b=document.createElement("button");
+    b.className="bar"+(t===sel?" sel":"");
+    b.style.height=Math.max(4,c*100)+"%";
+    b.style.background=LV[lvl(c)][2];
+    b.setAttribute("aria-label",hhmm(t)+" "+LV[lvl(c)][0]);
+    b.title=hhmm(t)+" "+LV[lvl(c)][0];
+    b.onclick=(function(tt){return function(){var h=Math.floor(tt/60),n=tt%60;$("time").value=(h<10?"0":"")+h+":"+(n<10?"0":"")+n;update()}})(t);
+    ch.appendChild(b);
+  }
+}
+fillSelect($("line"),Object.keys(LINES).map(function(k){return[k,k+" line"]}));
+$("line").onchange=setStations;$("stn").onchange=setDirs;
+["dir","day","time"].forEach(function(id){$(id).onchange=update;$(id).oninput=update});
+setStations();
+</script>
+</body>
+</html>
